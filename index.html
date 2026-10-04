@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simuladores de Reatores Nucleares - Física Moderna</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    body {
+      background-color: #1a1e24;
+      color: #e0e6ed;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      color: #58a6ff;
+      margin-bottom: 6px;
+    }
+    p.subtitle {
+      font-size: 0.95rem;
+      color: #8b949e;
+    }
+    /* Menu de Abas */
+    .tabs-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 14px;
+      max-width: 1020px;
+    }
+    .tab-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+    .tab-btn.active {
+      background: #1f6feb;
+      border-color: #58a6ff;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(31, 111, 235, 0.4);
+    }
+    /* Container do Canvas */
+    .canvas-container {
+      background: #e6ebf0;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+      max-width: 1000px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1000 / 600;
+      cursor: default;
+    }
+    /* Rodapé com atalhos e informações */
+    .info-footer {
+      max-width: 1000px;
+      width: 100%;
+      margin-top: 14px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 0.88rem;
+      color: #8b949e;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+    .shortcuts kbd {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: monospace;
+      color: #58a6ff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Simulador Interativo de Reatores Nucleares</h1>
+    <p class="subtitle">Laboratório Didático de Termodinâmica e Física Moderna</p>
+  </header>
+
+  <nav class="tabs-nav" id="tabs">
+    <button class="tab-btn active" onclick="selecionarReator('PWR')">⚛️ Reator PWR (Água Pressurizada)</button>
+    <button class="tab-btn" onclick="selecionarReator('BWR')">💧 Reator BWR (Água Fervente)</button>
+    <button class="tab-btn" onclick="selecionarReator('CANDU')">🍁 Reator CANDU (Água Pesada D₂O)</button>
+    <button class="tab-btn" onclick="selecionarReator('RBMK')">⚠️ Reator RBMK (Grafite / Chernobyl)</button>
+    <button class="tab-btn" onclick="selecionarReator('TOKAMAK')">🧲 Fusão Tokamak (Confinamento)</button>
+  </nav>
+
+  <div class="canvas-container">
+    <canvas id="simCanvas" width="1000" height="600"></canvas>
+  </div>
+
+  <div class="info-footer">
+    <div class="shortcuts">
+      <strong>Atalhos do Teclado:</strong> 
+      <kbd>ESPAÇO</kbd> Ligar/Desligar Reação &nbsp;|&nbsp; 
+      <kbd>W</kbd> Puxar Hastes/Campo &nbsp;|&nbsp; 
+      <kbd>S</kbd> Descer Hastes/Campo &nbsp;|&nbsp; 
+      <kbd>P</kbd> Pausar &nbsp;|&nbsp; 
+      <kbd>R</kbd> Reiniciar
+    </div>
+    <div>Pronto para GitHub Pages</div>
+  </div>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+
+let reatorAtual = 'PWR';
+
+// --- ESTADOS DE CADA SIMULADOR ---
+const estado = {
+  PWR: {
+    temp_primaria: 30.0,
+    temp_secundaria: 30.0,
+    insercao_hastes: 80.0,
+    fissao_ativa: false,
+    pausado: false,
+    fluxo_animacao: 0.0,
+    potencia_eletrica_mw: 0.0,
+    rotacao_eixo: 0.0
+  },
+  BWR: {
+    temp_nucleo: 30.0,
+    insercao_hastes: 80.0,
+    fissao_ativa: false,
+    pausado: false,
+    fluxo_animacao: 0.0,
+    potencia_eletrica_mw: 0.0,
+    rotacao_eixo: 0.0,
+    PONTO_EBULICAO: 285.0
+  },
+  CANDU: {
+    temp_primaria: 30.0,
+    temp_secundaria: 30.0,
+    insercao_hastes: 80.0,
+    fissao_ativa: false,
+    pausado: false,
+    fluxo_animacao: 0.0,
+    potencia_eletrica_mw: 0.0,
+    rotacao_eixo: 0.0
+  },
+  RBMK: {
+    temp_nucleo: 30.0,
+    insercao_hastes: 80.0,
+    fissao_ativa: false,
+    pausado: false,
+    modo_chernobyl: false,
+    nucleo_destruido: false,
+    fluxo_animacao: 0.0,
+    potencia_eletrica_mw: 0.0,
+    rotacao_eixo: 0.0,
+    PONTO_EBULICAO: 285.0
+  },
+  TOKAMAK: {
+    temp_plasma: 30.0,
+    campo_magnetico: 50.0,
+    plasma_ativo: false,
+    pausado: false,
+    disrupcao: false,
+    msg_disrupcao_timer: 0,
+    fluxo_animacao: 0.0,
+    fluxo_condensador: 0.0,
+    potencia_eletrica_mw: 0.0,
+    rotacao_eixo: 0.0
+  }
+};
+
+function selecionarReator(nome) {
+  reatorAtual = nome;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.textContent.includes(nome)) btn.classList.add('active');
+  });
+}
+
+// Posição do mouse normalizada no Canvas 1000x600
+let mousePos = { x: -100, y: -100 };
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mousePos.x = (e.clientX - rect.left) * scaleX;
+  mousePos.y = (e.clientY - rect.top) * scaleY;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mousePos.x = -100;
+  mousePos.y = -100;
+});
+
+// --- FUNÇÕES DE DESENHO AUXILIARES ---
+function pontoNoRetangulo(px, py, rx, ry, rw, rh) {
+  return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+}
+
+function desenharBotao(x, y, w, h, texto, corBase, hoverOffset = 25) {
+  const hover = pontoNoRetangulo(mousePos.x, mousePos.y, x, y, w, h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.fillStyle = hover ? clarearCor(corBase, hoverOffset) : corBase;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#323232';
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(texto, x + w / 2, y + h / 2);
+  ctx.restore();
+}
+
+function clarearCor(rgbStr, valor) {
+  const m = rgbStr.match(/\d+/g);
+  if (!m) return rgbStr;
+  const r = Math.min(255, parseInt(m[0]) + valor);
+  const g = Math.min(255, parseInt(m[1]) + valor);
+  const b = Math.min(255, parseInt(m[2]) + valor);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function desenharTuboAnimado(corParticula, x1, y1, x2, y2, offset, raio = 4, espacamento = 25) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgb(140, 145, 150)';
+  ctx.stroke();
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distancia = Math.hypot(dx, dy);
+  if (distancia > 0) {
+    const dirX = dx / distancia;
+    const dirY = dy / distancia;
+    let pos = offset % espacamento;
+    while (pos < distancia) {
+      const px = x1 + dirX * pos;
+      const py = y1 + dirY * pos;
+      ctx.beginPath();
+      ctx.arc(px, py, raio, 0, Math.PI * 2);
+      ctx.fillStyle = corParticula;
+      ctx.fill();
+      pos += espacamento;
+    }
+  }
+  ctx.restore();
+}
+
+function desenharCasa(x, y, energiaSuficiente) {
+  ctx.save();
+  ctx.fillStyle = 'rgb(180, 170, 160)';
+  ctx.fillRect(x, y, 40, 30);
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y);
+  ctx.lineTo(x + 20, y - 20);
+  ctx.lineTo(x + 45, y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgb(150, 50, 50)';
+  ctx.fill();
+
+  ctx.fillStyle = energiaSuficiente ? 'rgb(255, 255, 100)' : 'rgb(50, 50, 60)';
+  ctx.fillRect(x + 10, y + 5, 20, 15);
+  ctx.strokeStyle = 'rgb(100, 100, 100)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 20, y + 5); ctx.lineTo(x + 20, y + 20);
+  ctx.moveTo(x + 10, y + 12); ctx.lineTo(x + 30, y + 12);
+  ctx.stroke();
+  if (energiaSuficiente) {
+    ctx.strokeStyle = 'rgb(255, 255, 150)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 8, y + 3, 24, 19);
+  }
+  ctx.restore();
+}
+
+function desenharCasasCidade(potenciaMw) {
+  desenharCasa(930, 170, potenciaMw > 1);
+  desenharCasa(930, 280, potenciaMw > 200);
+  desenharCasa(930, 390, potenciaMw > 400);
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('CIDADE', 925, 440);
+}
+
+function desenharTextoContorno(texto, x, y, font, corTexto, corContorno = '#000000', lineWidth = 4) {
+  ctx.save();
+  ctx.font = font;
+  ctx.strokeStyle = corContorno;
+  ctx.lineWidth = lineWidth;
+  ctx.strokeText(texto, x, y);
+  ctx.fillStyle = corTexto;
+  ctx.fillText(texto, x, y);
+  ctx.restore();
+}
+
+function desenharHUD(blocos) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(20, 20, 960, 130, 10);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#b4b4b4';
+  ctx.stroke();
+
+  blocos.forEach(b => {
+    ctx.fillStyle = b.corTitulo;
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(b.titulo, b.x, 48);
+
+    ctx.fillStyle = '#1e1e1e';
+    ctx.font = '14px Arial';
+    b.linhas.forEach((linha, idx) => {
+      ctx.fillText(linha, b.x, 75 + idx * 22);
+    });
+  });
+  ctx.restore();
+}
+
+// ==========================================
+// 1. RENDERIZADOR PWR (Centro do eixo em Y = 270)
+// ==========================================
+function loopPWR() {
+  const p = estado.PWR;
+  if (!p.pausado) {
+    if (p.fissao_ativa) {
+      const fator = (100 - p.insercao_hastes) * 0.12;
+      p.temp_primaria += fator;
+    }
+    const troca = (p.temp_primaria - p.temp_secundaria) * 0.015;
+    p.temp_primaria -= troca + 0.5;
+    p.temp_secundaria += troca;
+    p.temp_secundaria -= (p.temp_secundaria - 30) * 0.01;
+
+    p.temp_primaria = Math.max(30, Math.min(p.temp_primaria, 1200));
+    p.temp_secundaria = Math.max(30, Math.min(p.temp_secundaria, 400));
+    p.fluxo_animacao += 2 + (p.temp_primaria / 150);
+
+    if (p.temp_secundaria > 100) {
+      const energia = (p.temp_secundaria - 100) * 8.5;
+      p.potencia_eletrica_mw = energia * 0.33;
+      p.rotacao_eixo += (p.temp_secundaria - 100) / 10;
+    } else {
+      p.potencia_eletrica_mw = 0.0;
+      p.rotacao_eixo = 0.0; // TOTALMENTE PARADO QUANDO DESLIGADO!
+    }
+  }
+
+  ctx.fillStyle = 'rgb(230, 235, 240)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  const rPrim = Math.min(255, Math.max(50, Math.floor((p.temp_primaria - 30) / 700 * 205 + 50)));
+  const bPrim = Math.min(255, Math.max(50, Math.floor(255 - (p.temp_primaria - 30) / 700 * 205)));
+  const corPrimaria = `rgb(${rPrim}, 50, ${bPrim})`;
+
+  let corSecundaria = 'rgb(220, 220, 230)';
+  if (p.temp_secundaria < 100) {
+    const rSec = Math.min(255, Math.max(100, Math.floor((p.temp_secundaria - 30) / 70 * 155 + 100)));
+    corSecundaria = `rgb(${rSec}, 200, 255)`;
+  }
+
+  // Tubulações PWR
+  desenharTuboAnimado('rgb(255, 100, 100)', 220, 320, 450, 320, p.fluxo_animacao);
+  desenharTuboAnimado('rgb(100, 150, 255)', 450, 440, 220, 440, p.fluxo_animacao);
+  desenharTuboAnimado(corSecundaria, 550, 260, 700, 260, p.fluxo_animacao * 1.5);
+  desenharTuboAnimado('rgb(50, 180, 255)', 700, 440, 550, 440, p.fluxo_animacao);
+  desenharTuboAnimado(corSecundaria, 720, 350, 720, 420, p.fluxo_animacao * 1.5);
+
+  // Núcleo PWR
+  ctx.beginPath();
+  ctx.roundRect(100, 270, 120, 220, 25);
+  ctx.fillStyle = corPrimaria;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#505050';
+  ctx.stroke();
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('NÚCLEO', 130, 500);
+
+  // Hastes de controle
+  const altHaste = (p.insercao_hastes / 100.0) * 190;
+  ctx.fillStyle = '#323232';
+  ctx.fillRect(125, 270, 10, altHaste);
+  ctx.fillRect(155, 270, 10, altHaste);
+  ctx.fillRect(185, 270, 10, altHaste);
+
+  // Gerador de Vapor
+  ctx.beginPath();
+  ctx.roundRect(450, 190, 100, 280, 15);
+  ctx.fillStyle = 'rgb(130, 140, 150)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(460, 200, 80, 260, 10);
+  ctx.fillStyle = corSecundaria;
+  ctx.fill();
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR DE', 455, 480);
+  ctx.fillText('VAPOR', 475, 498);
+
+  // Turbina PWR [(700, 230), (770, 190), (770, 350), (700, 310)]
+  ctx.beginPath();
+  ctx.moveTo(700, 230);
+  ctx.lineTo(770, 190);
+  ctx.lineTo(770, 350);
+  ctx.lineTo(700, 310);
+  ctx.closePath();
+  ctx.fillStyle = 'rgb(160, 160, 170)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgb(100, 100, 100)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('TURBINA', 705, 170);
+
+  // Eixo mecânico PWR (centro Y = 270)
+  ctx.fillStyle = 'rgb(80, 80, 80)';
+  ctx.fillRect(770, 265, 40, 10);
+
+  // Gerador PWR (810, 210, 90, 120) -> Centro Y = 270
+  ctx.beginPath();
+  ctx.roundRect(810, 210, 90, 120, 10);
+  ctx.fillStyle = 'rgb(200, 150, 50)';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgb(120, 90, 30)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR', 820, 190);
+
+  // Rotor interno: quando parado (rotacao_eixo = 0), fica perfeitamente horizontal em Y = 270!
+  const posYRotor = 270 + Math.sin(p.rotacao_eixo * Math.PI / 180) * 40;
+  ctx.beginPath();
+  ctx.moveTo(815, posYRotor);
+  ctx.lineTo(895, posYRotor);
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgb(100, 60, 20)';
+  ctx.stroke();
+
+  // Fio de transmissão elétrico (centro Y = 270)
+  const corEnergia = p.potencia_eletrica_mw > 0 ? 'rgb(255, 215, 0)' : 'rgb(100, 100, 100)';
+  const brilho = p.potencia_eletrica_mw > 0 ? Math.floor(Math.abs(Math.sin(p.rotacao_eixo * 2 * Math.PI / 180)) * 255) : 100;
+  const corBrilho = p.potencia_eletrica_mw > 0 ? `rgb(${brilho}, ${brilho}, 0)` : corEnergia;
+
+  ctx.beginPath();
+  ctx.moveTo(900, 270);
+  ctx.lineTo(950, 270);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(950, 200);
+  ctx.lineTo(950, 430);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  desenharCasasCidade(p.potencia_eletrica_mw);
+
+  // Condensador PWR
+  ctx.beginPath();
+  ctx.roundRect(660, 420, 120, 80, 8);
+  ctx.fillStyle = 'rgb(100, 150, 200)';
+  ctx.fill();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('CONDENSADOR', 665, 510);
+
+  // HUD
+  desenharHUD([
+    {
+      titulo: '1. CIRCUITO PRIMÁRIO (Núcleo)', corTitulo: '#b43232', x: 40,
+      linhas: [
+        `Temperatura: ${p.temp_primaria.toFixed(1)} °C (Normal: ~315°C)`,
+        `Pressão: ${(150 + p.temp_primaria / 50).toFixed(1)} atm (Impede ebulição)`,
+        `Fissão: ${p.fissao_ativa ? 'ATIVA' : 'PARADA'} (Hastes: ${p.insercao_hastes.toFixed(0)}%)`
+      ]
+    },
+    {
+      titulo: '2. CIRCUITO SECUNDÁRIO', corTitulo: '#3278b4', x: 380,
+      linhas: [
+        `Temperatura: ${p.temp_secundaria.toFixed(1)} °C`,
+        p.temp_secundaria >= 100 ? 'Estado: VAPOR (Girando Turbina)' : 'Estado: LÍQUIDO (Absorvendo Calor)'
+      ]
+    },
+    {
+      titulo: '3. REDE ELÉTRICA', corTitulo: '#c89632', x: 700,
+      linhas: [
+        `Potência: ${p.potencia_eletrica_mw.toFixed(1)} MW`,
+        p.potencia_eletrica_mw > 0 ? 'Eficiência Térmica: ~33%' : 'Sem geração (Aguardando vapor)'
+      ]
+    }
+  ]);
+
+  if (p.temp_primaria > 800) {
+    desenharTextoContorno('ALERTA: RISCO DE DERRETIMENTO DO NÚCLEO (MELTDOWN)!', 240, 175, 'bold 20px Arial', '#ff3232', '#000000');
+  }
+
+  // Botões
+  desenharBotao(40, 540, 150, 40, p.fissao_ativa ? 'PARAR FISSÃO' : 'INICIAR FISSÃO', p.fissao_ativa ? 'rgb(200, 80, 80)' : 'rgb(80, 180, 80)');
+  desenharBotao(210, 540, 150, 40, '↑ PUXAR HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(380, 540, 150, 40, '↓ DESCER HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(550, 540, 150, 40, p.pausado ? 'RETOMAR SIM.' : 'PAUSAR SIM.', p.pausado ? 'rgb(200, 150, 50)' : 'rgb(100, 100, 100)');
+  desenharBotao(720, 540, 150, 40, 'REINICIAR (R)', 'rgb(70, 130, 180)');
+}
+
+// ==========================================
+// 2. RENDERIZADOR BWR (Centro do eixo em Y = 250 - Alinhamento Original)
+// ==========================================
+function loopBWR() {
+  const b = estado.BWR;
+  if (!b.pausado) {
+    if (b.fissao_ativa) {
+      b.temp_nucleo += (100 - b.insercao_hastes) * 0.15;
+    }
+    b.temp_nucleo -= (b.temp_nucleo - 40) * 0.012;
+    b.temp_nucleo = Math.max(30, Math.min(b.temp_nucleo, 1200));
+    b.fluxo_animacao += 2 + (b.temp_nucleo / 150);
+
+    if (b.temp_nucleo >= b.PONTO_EBULICAO) {
+      b.potencia_eletrica_mw = (b.temp_nucleo - b.PONTO_EBULICAO) * 10.0 * 0.34;
+      b.rotacao_eixo += (b.temp_nucleo - b.PONTO_EBULICAO) / 8;
+    } else {
+      b.potencia_eletrica_mw = 0.0;
+      b.rotacao_eixo = 0.0; // TOTALMENTE PARADO QUANDO DESLIGADO!
+    }
+  }
+
+  ctx.fillStyle = 'rgb(230, 235, 240)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  const corFluido = b.temp_nucleo >= b.PONTO_EBULICAO ? 'rgb(220, 220, 230)' : 'rgb(100, 150, 255)';
+
+  // Tubulações Originais do BWR (alinhadas com Turbina em X=600 e Y=240)
+  desenharTuboAnimado(corFluido, 320, 240, 600, 240, b.fluxo_animacao * 1.5);
+  desenharTuboAnimado(corFluido, 635, 310, 635, 340, b.fluxo_animacao * 1.5);
+  desenharTuboAnimado('rgb(50, 180, 255)', 635, 410, 635, 440, b.fluxo_animacao);
+  desenharTuboAnimado('rgb(50, 180, 255)', 635, 440, 320, 440, b.fluxo_animacao);
+
+  // Cuba de Pressão do Reator BWR (200, 190, 120, 300)
+  const rNuc = Math.min(255, Math.max(50, Math.floor((b.temp_nucleo - 30) / 700 * 205 + 50)));
+  const bNuc = Math.min(255, Math.max(50, Math.floor(255 - (b.temp_nucleo - 30) / 700 * 205)));
+  ctx.beginPath();
+  ctx.roundRect(200, 190, 120, 300, 25);
+  ctx.fillStyle = `rgb(${rNuc}, 50, ${bNuc})`;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#505050';
+  ctx.stroke();
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('NÚCLEO DO REATOR (BWR)', 175, 510);
+
+  // Bolhas de vapor dentro da água no BWR quando em ebulição
+  if (b.temp_nucleo >= b.PONTO_EBULICAO) {
+    for (let i = 0; i < 8; i++) {
+      const bx = 210 + (i * 12);
+      const by = 470 - ((b.fluxo_animacao * 3 + i * 40) % 260);
+      ctx.beginPath();
+      ctx.arc(bx, by, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgb(220, 220, 240)';
+      ctx.fill();
+    }
+  }
+
+  // Hastes de controle no BWR
+  const altHaste = (b.insercao_hastes / 100.0) * 260;
+  ctx.fillStyle = '#323232';
+  ctx.fillRect(225, 190, 10, altHaste);
+  ctx.fillRect(255, 190, 10, altHaste);
+  ctx.fillRect(285, 190, 10, altHaste);
+
+  // Turbina BWR [(600, 210), (680, 170), (680, 330), (600, 290)] -> Centro Y = 250!
+  ctx.beginPath();
+  ctx.moveTo(600, 210);
+  ctx.lineTo(680, 170);
+  ctx.lineTo(680, 330);
+  ctx.lineTo(600, 290);
+  ctx.closePath();
+  ctx.fillStyle = 'rgb(160, 160, 170)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgb(100, 100, 100)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('TURBINA', 605, 145);
+
+  // Eixo mecânico BWR (680, 245, 40, 10) -> Centro Y = 250!
+  ctx.fillStyle = 'rgb(80, 80, 80)';
+  ctx.fillRect(680, 245, 40, 10);
+
+  // Gerador BWR (720, 190, 90, 120) -> Centro Y = 250!
+  ctx.beginPath();
+  ctx.roundRect(720, 190, 90, 120, 10);
+  ctx.fillStyle = 'rgb(200, 150, 50)';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgb(120, 90, 30)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR', 730, 170);
+
+  // Rotor interno: quando parado (rotacao_eixo = 0), fica perfeitamente horizontal em Y = 250!
+  const posYRotor = 250 + Math.sin(b.rotacao_eixo * Math.PI / 180) * 40;
+  ctx.beginPath();
+  ctx.moveTo(725, posYRotor);
+  ctx.lineTo(805, posYRotor);
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgb(100, 60, 20)';
+  ctx.stroke();
+
+  // Fio elétrico BWR (810, 250) -> (950, 250) -> Centro Y = 250!
+  const corEnergia = b.potencia_eletrica_mw > 0 ? 'rgb(255, 215, 0)' : 'rgb(100, 100, 100)';
+  const brilho = b.potencia_eletrica_mw > 0 ? Math.floor(Math.abs(Math.sin(b.rotacao_eixo * 2 * Math.PI / 180)) * 255) : 100;
+  const corBrilho = b.potencia_eletrica_mw > 0 ? `rgb(${brilho}, ${brilho}, 0)` : corEnergia;
+
+  ctx.beginPath();
+  ctx.moveTo(810, 250);
+  ctx.lineTo(950, 250);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(950, 200);
+  ctx.lineTo(950, 430);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  desenharCasasCidade(b.potencia_eletrica_mw);
+
+  // Condensador BWR (590, 340, 90, 70)
+  ctx.beginPath();
+  ctx.roundRect(590, 340, 90, 70, 8);
+  ctx.fillStyle = 'rgb(100, 150, 200)';
+  ctx.fill();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('CONDENSADOR', 580, 430);
+
+  desenharHUD([
+    {
+      titulo: '1. CIRCUITO ÚNICO (Núcleo BWR)', corTitulo: '#b43232', x: 40,
+      linhas: [
+        `Temperatura da Água: ${b.temp_nucleo.toFixed(1)} °C (Ebulição: ~285°C)`,
+        `Pressão do Vaso: ~75 atm`,
+        `Fissão: ${b.fissao_ativa ? 'ATIVA' : 'PARADA'} (Hastes: ${b.insercao_hastes.toFixed(0)}%)`
+      ]
+    },
+    {
+      titulo: '2. CARACTERÍSTICA DO CICLO DIRETO', corTitulo: '#3278b4', x: 380,
+      linhas: [
+        'Sem gerador de vapor separado!',
+        'Vapor vai diretamente para a turbina.',
+        b.temp_nucleo >= b.PONTO_EBULICAO ? 'Status: GERANDO VAPOR DIRETO' : 'Status: ÁGUA SUBAQUECIDA'
+      ]
+    },
+    {
+      titulo: '3. REDE ELÉTRICA', corTitulo: '#c89632', x: 700,
+      linhas: [
+        `Potência: ${b.potencia_eletrica_mw.toFixed(1)} MW`,
+        b.potencia_eletrica_mw > 0 ? 'Eficiência Térmica: ~34%' : 'Sem geração (Aguardando vapor)'
+      ]
+    }
+  ]);
+
+  if (b.temp_nucleo > 800) {
+    desenharTextoContorno('ALERTA: RISCO DE DERRETIMENTO DO NÚCLEO (MELTDOWN)!', 240, 175, 'bold 20px Arial', '#ff3232', '#000000');
+  }
+
+  desenharBotao(40, 540, 150, 40, b.fissao_ativa ? 'PARAR FISSÃO' : 'INICIAR FISSÃO', b.fissao_ativa ? 'rgb(200, 80, 80)' : 'rgb(80, 180, 80)');
+  desenharBotao(210, 540, 150, 40, '↑ PUXAR HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(380, 540, 150, 40, '↓ DESCER HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(550, 540, 150, 40, b.pausado ? 'RETOMAR SIM.' : 'PAUSAR SIM.', b.pausado ? 'rgb(200, 150, 50)' : 'rgb(100, 100, 100)');
+  desenharBotao(720, 540, 150, 40, 'REINICIAR (R)', 'rgb(70, 130, 180)');
+}
+
+// ==========================================
+// 3. RENDERIZADOR CANDU (Centro do eixo em Y = 270)
+// ==========================================
+function loopCANDU() {
+  const c = estado.CANDU;
+  if (!c.pausado) {
+    if (c.fissao_ativa) {
+      c.temp_primaria += (100 - c.insercao_hastes) * 0.11;
+    }
+    const troca = (c.temp_primaria - c.temp_secundaria) * 0.015;
+    c.temp_primaria -= troca + 0.5;
+    c.temp_secundaria += troca;
+    c.temp_secundaria -= (c.temp_secundaria - 30) * 0.01;
+
+    c.temp_primaria = Math.max(30, Math.min(c.temp_primaria, 1200));
+    c.temp_secundaria = Math.max(30, Math.min(c.temp_secundaria, 400));
+    c.fluxo_animacao += 2 + (c.temp_primaria / 150);
+
+    if (c.temp_secundaria > 100) {
+      c.potencia_eletrica_mw = (c.temp_secundaria - 100) * 8.5 * 0.31;
+      c.rotacao_eixo += (c.temp_secundaria - 100) / 10;
+    } else {
+      c.potencia_eletrica_mw = 0.0;
+      c.rotacao_eixo = 0.0; // TOTALMENTE PARADO QUANDO DESLIGADO!
+    }
+  }
+
+  ctx.fillStyle = 'rgb(230, 235, 240)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  const rPrim = Math.min(255, Math.max(0, Math.floor((c.temp_primaria - 30) / 700 * 200)));
+  const gPrim = Math.min(255, Math.max(150, Math.floor((c.temp_primaria - 30) / 700 * 105 + 150)));
+  const bPrim = Math.min(150, Math.max(0, Math.floor(150 - (c.temp_primaria - 30) / 700 * 150)));
+  const corPrimaria = `rgb(${rPrim}, ${gPrim}, ${bPrim})`;
+
+  let corSecundaria = 'rgb(220, 220, 230)';
+  if (c.temp_secundaria < 100) {
+    const rSec = Math.min(255, Math.max(100, Math.floor((c.temp_secundaria - 30) / 70 * 155 + 100)));
+    corSecundaria = `rgb(${rSec}, 200, 255)`;
+  }
+
+  // Tubos CANDU
+  desenharTuboAnimado(corPrimaria, 320, 295, 450, 295, c.fluxo_animacao);
+  desenharTuboAnimado('rgb(0, 160, 160)', 450, 415, 320, 415, c.fluxo_animacao);
+  desenharTuboAnimado(corSecundaria, 550, 260, 700, 260, c.fluxo_animacao * 1.5);
+  desenharTuboAnimado('rgb(50, 180, 255)', 700, 440, 550, 440, c.fluxo_animacao);
+  desenharTuboAnimado(corSecundaria, 720, 350, 720, 420, c.fluxo_animacao * 1.5);
+
+  // Calandria (80, 270, 240, 170)
+  ctx.beginPath();
+  ctx.roundRect(80, 270, 240, 170, 15);
+  ctx.fillStyle = corPrimaria;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#505050';
+  ctx.stroke();
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('NÚCLEO CANDU (Calandria)', 95, 455);
+
+  // Tubos horizontais
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = '#3c3c3c';
+  [295, 335, 375, 415].forEach(y => {
+    ctx.beginPath();
+    ctx.moveTo(90, y); ctx.lineTo(310, y);
+    ctx.stroke();
+  });
+
+  // Hastes descendo
+  const altHaste = (c.insercao_hastes / 100.0) * 170;
+  ctx.fillStyle = '#282828';
+  ctx.fillRect(145, 267, 10, altHaste);
+  ctx.fillRect(195, 267, 10, altHaste);
+  ctx.fillRect(245, 267, 10, altHaste);
+
+  // Gerador de Vapor
+  ctx.beginPath();
+  ctx.roundRect(450, 190, 100, 280, 15);
+  ctx.fillStyle = 'rgb(130, 140, 150)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(460, 200, 80, 260, 10);
+  ctx.fillStyle = corSecundaria;
+  ctx.fill();
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR DE', 455, 480);
+  ctx.fillText('VAPOR', 475, 498);
+
+  // Turbina CANDU (700, 190 -> centro Y = 270)
+  ctx.beginPath();
+  ctx.moveTo(700, 230);
+  ctx.lineTo(770, 190);
+  ctx.lineTo(770, 350);
+  ctx.lineTo(700, 310);
+  ctx.closePath();
+  ctx.fillStyle = 'rgb(160, 160, 170)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgb(100, 100, 100)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('TURBINA', 705, 170);
+
+  // Eixo mecânico CANDU
+  ctx.fillStyle = 'rgb(80, 80, 80)';
+  ctx.fillRect(770, 265, 40, 10);
+
+  // Gerador CANDU
+  ctx.beginPath();
+  ctx.roundRect(810, 210, 90, 120, 10);
+  ctx.fillStyle = 'rgb(200, 150, 50)';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgb(120, 90, 30)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR', 820, 190);
+
+  // Rotor interno: quando parado (rotacao_eixo = 0), fica perfeitamente horizontal em Y = 270!
+  const posYRotor = 270 + Math.sin(c.rotacao_eixo * Math.PI / 180) * 40;
+  ctx.beginPath();
+  ctx.moveTo(815, posYRotor);
+  ctx.lineTo(895, posYRotor);
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgb(100, 60, 20)';
+  ctx.stroke();
+
+  // Fios de transmissão
+  const corEnergia = c.potencia_eletrica_mw > 0 ? 'rgb(255, 215, 0)' : 'rgb(100, 100, 100)';
+  const brilho = c.potencia_eletrica_mw > 0 ? Math.floor(Math.abs(Math.sin(c.rotacao_eixo * 2 * Math.PI / 180)) * 255) : 100;
+  const corBrilho = c.potencia_eletrica_mw > 0 ? `rgb(${brilho}, ${brilho}, 0)` : corEnergia;
+
+  ctx.beginPath();
+  ctx.moveTo(900, 270);
+  ctx.lineTo(950, 270);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(950, 200);
+  ctx.lineTo(950, 430);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  desenharCasasCidade(c.potencia_eletrica_mw);
+
+  // Condensador
+  ctx.beginPath();
+  ctx.roundRect(660, 420, 120, 80, 8);
+  ctx.fillStyle = 'rgb(100, 150, 200)';
+  ctx.fill();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('CONDENSADOR', 665, 510);
+
+  desenharHUD([
+    {
+      titulo: '1. CIRCUITO PRIMÁRIO (Calandria)', corTitulo: '#288c64', x: 40,
+      linhas: [
+        `Temperatura Água Pesada: ${c.temp_primaria.toFixed(1)} °C`,
+        `Combustível: Urânio Natural (0.7% U-235)`,
+        `Fissão: ${c.fissao_ativa ? 'ATIVA' : 'PARADA'} (Hastes: ${c.insercao_hastes.toFixed(0)}%)`
+      ]
+    },
+    {
+      titulo: '2. CIRCUITO SECUNDÁRIO', corTitulo: '#3278b4', x: 380,
+      linhas: [
+        `Temperatura (Água Leve): ${c.temp_secundaria.toFixed(1)} °C`,
+        c.temp_secundaria >= 100 ? 'Estado: VAPOR (Girando Turbina)' : 'Estado: LÍQUIDO (Absorvendo Calor)'
+      ]
+    },
+    {
+      titulo: '3. REDE ELÉTRICA', corTitulo: '#c89632', x: 700,
+      linhas: [
+        `Potência: ${c.potencia_eletrica_mw.toFixed(1)} MW`,
+        c.potencia_eletrica_mw > 0 ? 'Eficiência Térmica: ~31%' : 'Sem geração (Aguardando vapor)'
+      ]
+    }
+  ]);
+
+  if (c.temp_primaria > 800) {
+    desenharTextoContorno('ALERTA: RISCO DE DERRETIMENTO DO NÚCLEO (MELTDOWN)!', 240, 175, 'bold 20px Arial', '#ff3232', '#000000');
+  }
+
+  desenharBotao(40, 540, 150, 40, c.fissao_ativa ? 'PARAR FISSÃO' : 'INICIAR FISSÃO', c.fissao_ativa ? 'rgb(200, 80, 80)' : 'rgb(80, 180, 80)');
+  desenharBotao(210, 540, 150, 40, '↑ PUXAR HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(380, 540, 150, 40, '↓ DESCER HASTES', 'rgb(120, 120, 140)');
+  desenharBotao(550, 540, 150, 40, c.pausado ? 'RETOMAR SIM.' : 'PAUSAR SIM.', c.pausado ? 'rgb(200, 150, 50)' : 'rgb(100, 100, 100)');
+  desenharBotao(720, 540, 150, 40, 'REINICIAR (R)', 'rgb(70, 130, 180)');
+}
+
+// ==========================================
+// 4. RENDERIZADOR RBMK (Centro do eixo em Y = 250 - Alinhamento Original)
+// ==========================================
+function loopRBMK() {
+  const r = estado.RBMK;
+  if (!r.pausado && !r.nucleo_destruido) {
+    if (r.modo_chernobyl) {
+      r.insercao_hastes = Math.min(100, r.insercao_hastes + 2);
+      const fator = (r.temp_nucleo * 0.012) + 5;
+      r.temp_nucleo += fator;
+      if (r.temp_nucleo > 3000) {
+        r.nucleo_destruido = true;
+        r.potencia_eletrica_mw = 0.0;
+      }
+    } else {
+      if (r.fissao_ativa) {
+        let fator = (100 - r.insercao_hastes) * 0.14;
+        if (r.temp_nucleo > r.PONTO_EBULICAO) {
+          fator += (r.temp_nucleo - r.PONTO_EBULICAO) * 0.01;
+        }
+        r.temp_nucleo += fator;
+      }
+      r.temp_nucleo -= (r.temp_nucleo - 40) * 0.012;
+      r.temp_nucleo = Math.max(30, Math.min(r.temp_nucleo, 1500));
+    }
+    r.fluxo_animacao += 2 + (r.temp_nucleo / 150);
+
+    if (r.temp_nucleo >= r.PONTO_EBULICAO && !r.nucleo_destruido) {
+      r.potencia_eletrica_mw = (r.temp_nucleo - r.PONTO_EBULICAO) * 10.0 * 0.32;
+      r.rotacao_eixo += (r.temp_nucleo - r.PONTO_EBULICAO) / 8;
+    } else {
+      r.potencia_eletrica_mw = 0.0;
+      r.rotacao_eixo = 0.0; // TOTALMENTE PARADO QUANDO DESLIGADO!
+    }
+  }
+
+  ctx.fillStyle = 'rgb(230, 235, 240)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  const corFluido = r.temp_nucleo >= r.PONTO_EBULICAO ? 'rgb(220, 220, 230)' : 'rgb(100, 150, 255)';
+
+  if (!r.nucleo_destruido) {
+    // Tubulações RBMK
+    desenharTuboAnimado(corFluido, 340, 240, 600, 240, r.fluxo_animacao * 1.5);
+    desenharTuboAnimado(corFluido, 635, 310, 635, 340, r.fluxo_animacao * 1.5);
+    desenharTuboAnimado('rgb(50, 180, 255)', 635, 410, 635, 440, r.fluxo_animacao);
+    desenharTuboAnimado('rgb(50, 180, 255)', 635, 440, 340, 440, r.fluxo_animacao);
+
+    // Núcleo RBMK (Grafite) (180, 190, 160, 300)
+    const rCor = Math.min(255, Math.max(80, Math.floor((r.temp_nucleo - 30) / 1000 * 255 + 80)));
+    const gCor = r.temp_nucleo > 500 ? Math.min(255, Math.max(80, Math.floor((r.temp_nucleo - 500) / 1000 * 255 + 80))) : 80;
+    const bCor = r.temp_nucleo > 800 ? Math.min(255, Math.max(80, Math.floor((r.temp_nucleo - 800) / 1000 * 255 + 80))) : 80;
+
+    ctx.fillStyle = `rgb(${rCor}, ${gCor}, ${bCor})`;
+    ctx.beginPath();
+    ctx.roundRect(180, 190, 160, 300, 10);
+    ctx.fill();
+
+    // Grade de grafite
+    ctx.strokeStyle = '#282828';
+    ctx.lineWidth = 2;
+    for (let x = 180; x < 340; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 190); ctx.lineTo(x, 490); ctx.stroke();
+    }
+    for (let y = 190; y < 490; y += 40) {
+      ctx.beginPath(); ctx.moveTo(180, y); ctx.lineTo(340, y); ctx.stroke();
+    }
+
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#505050';
+    ctx.strokeRect(180, 190, 160, 300);
+
+    ctx.fillStyle = '#323232';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText('NÚCLEO (Grafite RBMK)', 185, 510);
+
+    // Hastes
+    const altHaste = (r.insercao_hastes / 100.0) * 260;
+    [215, 255, 295].forEach(hx => {
+      ctx.fillStyle = '#282828';
+      ctx.fillRect(hx, 190, 10, altHaste);
+      if (altHaste > 0) {
+        ctx.fillStyle = '#969696';
+        ctx.fillRect(hx, 190 + altHaste, 10, 15);
+      }
+    });
+
+    // Turbina RBMK [(600, 210), (680, 170), (680, 330), (600, 290)] -> Centro Y = 250!
+    ctx.beginPath();
+    ctx.moveTo(600, 210);
+    ctx.lineTo(680, 170);
+    ctx.lineTo(680, 330);
+    ctx.lineTo(600, 290);
+    ctx.closePath();
+    ctx.fillStyle = 'rgb(160, 160, 170)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgb(100, 100, 100)';
+    ctx.stroke();
+    ctx.fillStyle = '#323232';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText('TURBINA', 605, 145);
+
+    // Eixo mecânico RBMK (680, 245, 40, 10) -> Centro Y = 250!
+    ctx.fillStyle = 'rgb(80, 80, 80)';
+    ctx.fillRect(680, 245, 40, 10);
+
+    // Gerador RBMK (720, 190, 90, 120) -> Centro Y = 250!
+    ctx.beginPath();
+    ctx.roundRect(720, 190, 90, 120, 10);
+    ctx.fillStyle = 'rgb(200, 150, 50)';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgb(120, 90, 30)';
+    ctx.stroke();
+    ctx.fillStyle = '#323232';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText('GERADOR', 730, 170);
+
+    // Rotor interno: quando parado (rotacao_eixo = 0), fica perfeitamente horizontal em Y = 250!
+    const posYRotor = 250 + Math.sin(r.rotacao_eixo * Math.PI / 180) * 40;
+    ctx.beginPath();
+    ctx.moveTo(725, posYRotor);
+    ctx.lineTo(805, posYRotor);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgb(100, 60, 20)';
+    ctx.stroke();
+
+    // Fio elétrico RBMK (810, 250) -> (950, 250) -> Centro Y = 250!
+    const corEnergia = r.potencia_eletrica_mw > 0 ? 'rgb(255, 215, 0)' : 'rgb(100, 100, 100)';
+    const brilho = r.potencia_eletrica_mw > 0 ? Math.floor(Math.abs(Math.sin(r.rotacao_eixo * 2 * Math.PI / 180)) * 255) : 100;
+    const corBrilho = r.potencia_eletrica_mw > 0 ? `rgb(${brilho}, ${brilho}, 0)` : corEnergia;
+
+    ctx.beginPath();
+    ctx.moveTo(810, 250);
+    ctx.lineTo(950, 250);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = corBrilho;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(950, 200);
+    ctx.lineTo(950, 430);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = corBrilho;
+    ctx.stroke();
+
+    desenharCasasCidade(r.potencia_eletrica_mw);
+
+    // Condensador RBMK (590, 340, 90, 70)
+    ctx.beginPath();
+    ctx.roundRect(590, 340, 90, 70, 8);
+    ctx.fillStyle = 'rgb(100, 150, 200)';
+    ctx.fill();
+    ctx.fillStyle = '#323232';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText('CONDENSADOR', 580, 430);
+
+  } else {
+    // Explosão térmica Chernobyl
+    for (let i = 0; i < 40; i++) {
+      const rx = 260 + (Math.random() * 240 - 120);
+      const ry = 340 + (Math.random() * 250 - 150);
+      const raio = 30 + Math.random() * 25;
+      ctx.beginPath();
+      ctx.arc(rx, ry, raio, 0, Math.PI * 2);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(40, 40, 40, 0.4)' : 'rgba(255, 80, 0, 0.5)';
+      ctx.fill();
+    }
+    desenharTextoContorno('EXPLOSÃO TÉRMICA! NÚCLEO EXPOSTO!', 260, 300, 'bold 28px Arial', '#ff3232', '#000000', 6);
+  }
+
+  desenharHUD([
+    {
+      titulo: '1. CIRCUITO PRIMÁRIO (RBMK)', corTitulo: '#646464', x: 40,
+      linhas: [
+        `Temp. Núcleo: ${r.temp_nucleo.toFixed(1)} °C`,
+        `Moderador: Blocos de Grafite Sólido`,
+        `Fissão: ${r.fissao_ativa ? 'ATIVA' : 'PARADA'} (Hastes: ${r.insercao_hastes.toFixed(0)}%)`
+      ]
+    },
+    {
+      titulo: '2. ESPECIFICAÇÕES DE RISCO', corTitulo: '#b43232', x: 380,
+      linhas: [
+        'Coeficiente de Vazio: POSITIVO',
+        'Vapor no núcleo ACELERA a fissão!',
+        'Falha AZ-5: Pontas de grafite causam pico térmico'
+      ]
+    },
+    {
+      titulo: '3. REDE ELÉTRICA', corTitulo: '#c89632', x: 740,
+      linhas: [
+        `Potência: ${r.potencia_eletrica_mw.toFixed(1)} MW`,
+        r.nucleo_destruido ? 'REATOR DESTRUÍDO' : (r.potencia_eletrica_mw > 0 ? 'Operação Instável' : 'Sem geração')
+      ]
+    }
+  ]);
+
+  if (!r.nucleo_destruido) {
+    if (r.modo_chernobyl) {
+      desenharTextoContorno('AZ-5 ACIONADO! CICLO EXPONENCIAL!', 340, 310, 'bold 24px Arial', '#ff3232');
+    } else if (r.temp_nucleo > 600) {
+      desenharTextoContorno('ALERTA: INSTABILIDADE TÉRMICA DETECTADA!', 310, 310, 'bold 22px Arial', '#ff6400');
+    }
+
+    desenharBotao(20, 540, 130, 40, r.fissao_ativa ? 'PARAR FISSÃO' : 'INICIAR', r.fissao_ativa ? 'rgb(200, 80, 80)' : 'rgb(80, 180, 80)');
+    desenharBotao(160, 540, 130, 40, '↑ PUXAR', 'rgb(120, 120, 140)');
+    desenharBotao(300, 540, 130, 40, '↓ DESCER', 'rgb(120, 120, 140)');
+    desenharBotao(440, 540, 130, 40, r.pausado ? 'RETOMAR' : 'PAUSAR', r.pausado ? 'rgb(200, 150, 50)' : 'rgb(100, 100, 100)');
+    desenharBotao(580, 540, 140, 40, 'REINICIAR (R)', 'rgb(70, 130, 180)');
+    desenharBotao(740, 540, 240, 40, 'SIMULAR CHERNOBYL (AZ-5)', 'rgb(220, 50, 50)');
+  } else {
+    desenharBotao(350, 460, 300, 55, '🔄 REINICIAR SIMULADOR (R)', 'rgb(40, 160, 60)');
+  }
+}
+
+// ==========================================
+// 5. RENDERIZADOR TOKAMAK (Centro do eixo em Y = 260 - Alinhamento Original)
+// ==========================================
+function loopTokamak() {
+  const t = estado.TOKAMAK;
+  let instabX = 0, instabY = 0;
+  let espessuraPlasma = 0;
+
+  if (!t.pausado) {
+    if (t.plasma_ativo) {
+      t.temp_plasma = Math.min(160000000, t.temp_plasma + 1500000);
+    } else {
+      t.temp_plasma = Math.max(30, t.temp_plasma - 3000000);
+    }
+
+    const pressaoExpansao = t.temp_plasma / 2500000;
+    const compressaoMag = t.campo_magnetico * 0.8;
+    espessuraPlasma = Math.max(2, pressaoExpansao - compressaoMag + 20);
+
+    const erroCampo = Math.abs(t.campo_magnetico - 75);
+    if (t.temp_plasma > 50000000) {
+      const forca = Math.floor((erroCampo / 3) + (t.temp_plasma / 40000000));
+      instabX = (Math.random() * 2 - 1) * forca;
+      instabY = (Math.random() * 2 - 1) * forca;
+    }
+
+    if ((espessuraPlasma / 2) + Math.max(Math.abs(instabX), Math.abs(instabY)) > 45 && t.temp_plasma > 1000000) {
+      t.plasma_ativo = false;
+      t.disrupcao = true;
+      t.msg_disrupcao_timer = 90;
+      t.temp_plasma = 30;
+      t.potencia_eletrica_mw = 0;
+    }
+
+    t.fluxo_animacao += 2 + (t.temp_plasma / 10000000);
+    t.fluxo_condensador += 3;
+
+    if (t.temp_plasma >= 100000000 && !t.disrupcao) {
+      t.potencia_eletrica_mw = ((t.temp_plasma - 100000000) / 100000) * 0.40;
+      t.rotacao_eixo += t.temp_plasma / 10000000;
+    } else {
+      t.potencia_eletrica_mw = 0.0;
+      t.rotacao_eixo = 0.0; // TOTALMENTE PARADO QUANDO DESLIGADO!
+    }
+  }
+
+  if (t.msg_disrupcao_timer > 0) t.msg_disrupcao_timer--;
+
+  ctx.fillStyle = 'rgb(230, 235, 240)';
+  ctx.fillRect(0, 0, 1000, 600);
+
+  let corPlasma = 'rgb(150, 0, 150)';
+  if (t.temp_plasma > 100000000) corPlasma = 'rgb(255, 200, 255)';
+  else if (t.temp_plasma > 10000000) corPlasma = 'rgb(255, 50, 200)';
+
+  const corFluido = t.temp_plasma > 100000000 ? 'rgb(220, 220, 230)' : 'rgb(100, 150, 255)';
+
+  // Tubulações Tokamak
+  desenharTuboAnimado(corFluido, 440, 250, 600, 250, t.fluxo_animacao * 1.5);
+  desenharTuboAnimado(corFluido, 635, 310, 635, 340, t.fluxo_animacao * 1.5);
+  desenharTuboAnimado('rgb(50, 180, 255)', 635, 410, 635, 440, t.fluxo_condensador);
+  desenharTuboAnimado('rgb(50, 180, 255)', 635, 440, 440, 440, t.fluxo_condensador);
+
+  // Tokamak - Torus (250, 340)
+  const cx = 250, cy = 340;
+  ctx.beginPath(); ctx.arc(cx, cy, 160, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgb(80, 80, 80)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, 150, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgb(120, 120, 130)'; ctx.fill();
+
+  ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgb(80, 80, 80)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, 50, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgb(60, 60, 60)'; ctx.fill();
+
+  // Bobinas
+  for (let ang = 0; ang < 360; ang += 45) {
+    const rad = ang * Math.PI / 180;
+    const bx = cx + Math.cos(rad) * 105;
+    const by = cy + Math.sin(rad) * 105;
+    ctx.beginPath();
+    ctx.arc(bx, by, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgb(200, 100, 30)';
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('TOKAMAK (Vista Superior)', 160, 510);
+
+  // Plasma
+  if (t.temp_plasma > 1000 && !t.disrupcao) {
+    const px = cx + instabX;
+    const py = cy + instabY;
+    ctx.beginPath();
+    ctx.arc(px, py, 105, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1, espessuraPlasma);
+    ctx.strokeStyle = corPlasma;
+    ctx.stroke();
+
+    if (t.temp_plasma > 50000000) {
+      ctx.beginPath();
+      ctx.arc(px, py, 105, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, espessuraPlasma / 3);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    }
+  }
+
+  // Turbina Tokamak [(600, 220), (680, 180), (680, 340), (600, 300)] -> Centro Y = 260!
+  ctx.beginPath();
+  ctx.moveTo(600, 220);
+  ctx.lineTo(680, 180);
+  ctx.lineTo(680, 340);
+  ctx.lineTo(600, 300);
+  ctx.closePath();
+  ctx.fillStyle = 'rgb(160, 160, 170)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgb(100, 100, 100)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('TURBINA', 605, 155);
+
+  // Eixo mecânico Tokamak (680, 255, 40, 10) -> Centro Y = 260!
+  ctx.fillStyle = 'rgb(80, 80, 80)';
+  ctx.fillRect(680, 255, 40, 10);
+
+  // Gerador Tokamak (720, 200, 90, 120) -> Centro Y = 260!
+  ctx.beginPath();
+  ctx.roundRect(720, 200, 90, 120, 10);
+  ctx.fillStyle = 'rgb(200, 150, 50)';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgb(120, 90, 30)';
+  ctx.stroke();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('GERADOR', 730, 180);
+
+  // Rotor interno: quando parado (rotacao_eixo = 0), fica perfeitamente horizontal em Y = 260!
+  const posYRotor = 260 + Math.sin(t.rotacao_eixo * Math.PI / 180) * 40;
+  ctx.beginPath();
+  ctx.moveTo(725, posYRotor);
+  ctx.lineTo(805, posYRotor);
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgb(100, 60, 20)';
+  ctx.stroke();
+
+  // Fio elétrico Tokamak (810, 260) -> (950, 260) -> Centro Y = 260!
+  const corEnergia = t.potencia_eletrica_mw > 0 ? 'rgb(255, 215, 0)' : 'rgb(100, 100, 100)';
+  const brilho = t.potencia_eletrica_mw > 0 ? Math.floor(Math.abs(Math.sin(t.rotacao_eixo * 2 * Math.PI / 180)) * 255) : 100;
+  const corBrilho = t.potencia_eletrica_mw > 0 ? `rgb(${brilho}, ${brilho}, 0)` : corEnergia;
+
+  ctx.beginPath();
+  ctx.moveTo(810, 260);
+  ctx.lineTo(950, 260);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(950, 200);
+  ctx.lineTo(950, 430);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = corBrilho;
+  ctx.stroke();
+
+  desenharCasasCidade(t.potencia_eletrica_mw);
+
+  // Condensador Tokamak (590, 340, 90, 70)
+  ctx.beginPath();
+  ctx.roundRect(590, 340, 90, 70, 8);
+  ctx.fillStyle = 'rgb(100, 150, 200)';
+  ctx.fill();
+  ctx.fillStyle = '#323232';
+  ctx.font = 'bold 15px Arial';
+  ctx.fillText('CONDENSADOR', 580, 420);
+
+  desenharHUD([
+    {
+      titulo: '1. CÂMARA DE VÁCUO (Tokamak)', corTitulo: '#9632b4', x: 40,
+      linhas: [
+        `Temperatura Plasma: ${t.temp_plasma.toLocaleString('pt-BR')} °C`,
+        `Combustível: Isótopos Deutério + Trítio`,
+        `Estado: ${t.plasma_ativo ? 'CONFINADO' : 'DESLIGADO'}`
+      ]
+    },
+    {
+      titulo: '2. CONTROLE MAGNÉTICO', corTitulo: '#3278b4', x: 380,
+      linhas: [
+        `Força Magnética: ${t.campo_magnetico.toFixed(0)}%`,
+        `Desafio: Equilibrar magnetismo e expansão`,
+        `Meta de Fusão: 150.000.000 °C`
+      ]
+    },
+    {
+      titulo: '3. REDE ELÉTRICA', corTitulo: '#c89632', x: 740,
+      linhas: [
+        `Potência: ${t.potencia_eletrica_mw.toFixed(1)} MW`,
+        t.potencia_eletrica_mw > 0 ? 'Fusão Ocorrendo (Q > 1)!' : 'Aguardando Temperatura'
+      ]
+    }
+  ]);
+
+  if (t.msg_disrupcao_timer > 0) {
+    desenharTextoContorno('DISRUPÇÃO! PLASMA TOCOU A PAREDE!', 250, 310, 'bold 24px Arial', '#ff6464');
+    desenharTextoContorno('O reator resfriou com segurança.', 300, 340, 'bold 16px Arial', '#e0e0e0');
+  }
+
+  desenharBotao(30, 540, 185, 40, t.plasma_ativo ? 'PARAR AQUECIMENTO' : 'INJETAR PLASMA', t.plasma_ativo ? 'rgb(200, 80, 180)' : 'rgb(80, 180, 200)');
+  desenharBotao(230, 540, 175, 40, '↑ AUMENTAR CAMPO', 'rgb(120, 120, 140)');
+  desenharBotao(420, 540, 175, 40, '↓ REDUZIR CAMPO', 'rgb(120, 120, 140)');
+  desenharBotao(610, 540, 160, 40, t.pausado ? 'RETOMAR' : 'PAUSAR', t.pausado ? 'rgb(200, 150, 50)' : 'rgb(100, 100, 100)');
+  desenharBotao(790, 540, 170, 40, 'REINICIAR (R)', 'rgb(70, 130, 180)');
+}
+
+// ==========================================
+// CLIQUES NOS BOTÕES
+// ==========================================
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+
+  if (reatorAtual === 'PWR') {
+    const p = estado.PWR;
+    if (pontoNoRetangulo(x, y, 40, 540, 150, 40)) p.fissao_ativa = !p.fissao_ativa;
+    else if (pontoNoRetangulo(x, y, 210, 540, 150, 40)) p.insercao_hastes = Math.max(0, p.insercao_hastes - 5);
+    else if (pontoNoRetangulo(x, y, 380, 540, 150, 40)) p.insercao_hastes = Math.min(100, p.insercao_hastes + 5);
+    else if (pontoNoRetangulo(x, y, 550, 540, 150, 40)) p.pausado = !p.pausado;
+    else if (pontoNoRetangulo(x, y, 720, 540, 150, 40)) resetPWR();
+  }
+  else if (reatorAtual === 'BWR') {
+    const b = estado.BWR;
+    if (pontoNoRetangulo(x, y, 40, 540, 150, 40)) b.fissao_ativa = !b.fissao_ativa;
+    else if (pontoNoRetangulo(x, y, 210, 540, 150, 40)) b.insercao_hastes = Math.max(0, b.insercao_hastes - 5);
+    else if (pontoNoRetangulo(x, y, 380, 540, 150, 40)) b.insercao_hastes = Math.min(100, b.insercao_hastes + 5);
+    else if (pontoNoRetangulo(x, y, 550, 540, 150, 40)) b.pausado = !b.pausado;
+    else if (pontoNoRetangulo(x, y, 720, 540, 150, 40)) resetBWR();
+  }
+  else if (reatorAtual === 'CANDU') {
+    const c = estado.CANDU;
+    if (pontoNoRetangulo(x, y, 40, 540, 150, 40)) c.fissao_ativa = !c.fissao_ativa;
+    else if (pontoNoRetangulo(x, y, 210, 540, 150, 40)) c.insercao_hastes = Math.max(0, c.insercao_hastes - 5);
+    else if (pontoNoRetangulo(x, y, 380, 540, 150, 40)) c.insercao_hastes = Math.min(100, c.insercao_hastes + 5);
+    else if (pontoNoRetangulo(x, y, 550, 540, 150, 40)) c.pausado = !c.pausado;
+    else if (pontoNoRetangulo(x, y, 720, 540, 150, 40)) resetCANDU();
+  }
+  else if (reatorAtual === 'RBMK') {
+    const r = estado.RBMK;
+    if (r.nucleo_destruido) {
+      if (pontoNoRetangulo(x, y, 350, 460, 300, 55)) resetRBMK();
+    } else {
+      if (pontoNoRetangulo(x, y, 20, 540, 130, 40)) r.fissao_ativa = !r.fissao_ativa;
+      else if (pontoNoRetangulo(x, y, 160, 540, 130, 40)) r.insercao_hastes = Math.max(0, r.insercao_hastes - 5);
+      else if (pontoNoRetangulo(x, y, 300, 540, 130, 40)) r.insercao_hastes = Math.min(100, r.insercao_hastes + 5);
+      else if (pontoNoRetangulo(x, y, 440, 540, 130, 40)) r.pausado = !r.pausado;
+      else if (pontoNoRetangulo(x, y, 580, 540, 140, 40)) resetRBMK();
+      else if (pontoNoRetangulo(x, y, 740, 540, 240, 40)) {
+        r.modo_chernobyl = true;
+        r.fissao_ativa = true;
+      }
+    }
+  }
+  else if (reatorAtual === 'TOKAMAK') {
+    const t = estado.TOKAMAK;
+    if (pontoNoRetangulo(x, y, 30, 540, 185, 40)) {
+      t.plasma_ativo = !t.plasma_ativo;
+      if (t.plasma_ativo) t.disrupcao = false;
+    }
+    else if (pontoNoRetangulo(x, y, 230, 540, 175, 40)) t.campo_magnetico = Math.min(100, t.campo_magnetico + 5);
+    else if (pontoNoRetangulo(x, y, 420, 540, 175, 40)) t.campo_magnetico = Math.max(0, t.campo_magnetico - 5);
+    else if (pontoNoRetangulo(x, y, 610, 540, 160, 40)) t.pausado = !t.pausado;
+    else if (pontoNoRetangulo(x, y, 790, 540, 170, 40)) resetTokamak();
+  }
+});
+
+// ==========================================
+// TECLADO (W, S, ESPAÇO, P, R)
+// ==========================================
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+
+  if (k === 'r') {
+    if (reatorAtual === 'PWR') resetPWR();
+    else if (reatorAtual === 'BWR') resetBWR();
+    else if (reatorAtual === 'CANDU') resetCANDU();
+    else if (reatorAtual === 'RBMK') resetRBMK();
+    else if (reatorAtual === 'TOKAMAK') resetTokamak();
+    return;
+  }
+
+  if (reatorAtual === 'PWR') {
+    const p = estado.PWR;
+    if (k === 'w') p.insercao_hastes = Math.max(0, p.insercao_hastes - 5);
+    else if (k === 's') p.insercao_hastes = Math.min(100, p.insercao_hastes + 5);
+    else if (e.code === 'Space') { p.fissao_ativa = !p.fissao_ativa; e.preventDefault(); }
+    else if (k === 'p') p.pausado = !p.pausado;
+  }
+  else if (reatorAtual === 'BWR') {
+    const b = estado.BWR;
+    if (k === 'w') b.insercao_hastes = Math.max(0, b.insercao_hastes - 5);
+    else if (k === 's') b.insercao_hastes = Math.min(100, b.insercao_hastes + 5);
+    else if (e.code === 'Space') { b.fissao_ativa = !b.fissao_ativa; e.preventDefault(); }
+    else if (k === 'p') b.pausado = !b.pausado;
+  }
+  else if (reatorAtual === 'CANDU') {
+    const c = estado.CANDU;
+    if (k === 'w') c.insercao_hastes = Math.max(0, c.insercao_hastes - 5);
+    else if (k === 's') c.insercao_hastes = Math.min(100, c.insercao_hastes + 5);
+    else if (e.code === 'Space') { c.fissao_ativa = !c.fissao_ativa; e.preventDefault(); }
+    else if (k === 'p') c.pausado = !c.pausado;
+  }
+  else if (reatorAtual === 'RBMK') {
+    const r = estado.RBMK;
+    if (!r.nucleo_destruido) {
+      if (k === 'w') r.insercao_hastes = Math.max(0, r.insercao_hastes - 5);
+      else if (k === 's') r.insercao_hastes = Math.min(100, r.insercao_hastes + 5);
+      else if (e.code === 'Space') { r.fissao_ativa = !r.fissao_ativa; e.preventDefault(); }
+      else if (k === 'p') r.pausado = !r.pausado;
+    }
+  }
+  else if (reatorAtual === 'TOKAMAK') {
+    const t = estado.TOKAMAK;
+    if (k === 'w') t.campo_magnetico = Math.min(100, t.campo_magnetico + 5);
+    else if (k === 's') t.campo_magnetico = Math.max(0, t.campo_magnetico - 5);
+    else if (e.code === 'Space') {
+      t.plasma_ativo = !t.plasma_ativo;
+      if (t.plasma_ativo) t.disrupcao = false;
+      e.preventDefault();
+    }
+    else if (k === 'p') t.pausado = !t.pausado;
+  }
+});
+
+// ==========================================
+// FUNÇÕES DE RESET
+// ==========================================
+function resetPWR() {
+  estado.PWR.temp_primaria = 30.0;
+  estado.PWR.temp_secundaria = 30.0;
+  estado.PWR.insercao_hastes = 80.0;
+  estado.PWR.fissao_ativa = false;
+  estado.PWR.pausado = false;
+  estado.PWR.potencia_eletrica_mw = 0.0;
+  estado.PWR.rotacao_eixo = 0.0;
+}
+function resetBWR() {
+  estado.BWR.temp_nucleo = 30.0;
+  estado.BWR.insercao_hastes = 80.0;
+  estado.BWR.fissao_ativa = false;
+  estado.BWR.pausado = false;
+  estado.BWR.potencia_eletrica_mw = 0.0;
+  estado.BWR.rotacao_eixo = 0.0;
+}
+function resetCANDU() {
+  estado.CANDU.temp_primaria = 30.0;
+  estado.CANDU.temp_secundaria = 30.0;
+  estado.CANDU.insercao_hastes = 80.0;
+  estado.CANDU.fissao_ativa = false;
+  estado.CANDU.pausado = false;
+  estado.CANDU.potencia_eletrica_mw = 0.0;
+  estado.CANDU.rotacao_eixo = 0.0;
+}
+function resetRBMK() {
+  estado.RBMK.temp_nucleo = 30.0;
+  estado.RBMK.insercao_hastes = 80.0;
+  estado.RBMK.fissao_ativa = false;
+  estado.RBMK.pausado = false;
+  estado.RBMK.modo_chernobyl = false;
+  estado.RBMK.nucleo_destruido = false;
+  estado.RBMK.potencia_eletrica_mw = 0.0;
+  estado.RBMK.rotacao_eixo = 0.0;
+}
+function resetTokamak() {
+  estado.TOKAMAK.temp_plasma = 30.0;
+  estado.TOKAMAK.campo_magnetico = 50.0;
+  estado.TOKAMAK.plasma_ativo = false;
+  estado.TOKAMAK.pausado = false;
+  estado.TOKAMAK.disrupcao = false;
+  estado.TOKAMAK.msg_disrupcao_timer = 0;
+  estado.TOKAMAK.potencia_eletrica_mw = 0.0;
+  estado.TOKAMAK.rotacao_eixo = 0.0;
+}
+
+// ==========================================
+// LOOP PRINCIPAL (30-60 FPS)
+// ==========================================
+function loop() {
+  if (reatorAtual === 'PWR') loopPWR();
+  else if (reatorAtual === 'BWR') loopBWR();
+  else if (reatorAtual === 'CANDU') loopCANDU();
+  else if (reatorAtual === 'RBMK') loopRBMK();
+  else if (reatorAtual === 'TOKAMAK') loopTokamak();
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
