@@ -7,7 +7,7 @@ Contém simuladores interativos com respostas térmicas, fluídicas, elétricas 
 
 ## 🚀 Acesse a Versão Web Interativa
 Os simuladores podem ser executados diretamente no navegador através do GitHub Pages:
-> **[Acessar Simulador Online](https://felipeferreiradeoliveira123.github.io/reatores-nucleares/)** *(substitua pelo link do seu repositório)*
+> **[Acessar Simulador Online](https://felipefdo.github.io/Reatores-Nucleares/)**
 
 ---
 
